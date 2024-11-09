@@ -2,6 +2,8 @@ import { AdminApi } from '../api/adminApi.js';
 import { RoleApi } from '../api/roleApi.js';
 import { TokenService } from '../services/tokenService.js';
 import { showMessage } from '../utils/messageUtil.js';
+import { ValidationService } from '../services/validationService.js';
+import { ErrorCodes, ErrorFields } from '../constants/errorMessages.js';
 
 export class UsersController {
     constructor() {
@@ -18,16 +20,22 @@ export class UsersController {
         this.setupLogout();
         this.setupModal();
         this.modal = new bootstrap.Modal(document.getElementById('editModal'));
-        
+
         // Загружаем данные - здесь сработает 403 ошибка для пользователя без прав админа
         await this.loadRoles();
         await this.loadUsers();
     }
 
     setupLogout() {
-        document.getElementById('logoutBtn').addEventListener('click', () => {
-            TokenService.removeTokens();
-            window.location.href = '/pages/login.html';
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            try {
+                await TokenService.logout();
+                setTimeout(() => {
+                    window.location.href = '/pages/login.html';
+                }, 1000);
+            } catch (error) {
+                console.error('Error during logout:', error);
+            }
         });
     }
 
@@ -44,21 +52,21 @@ export class UsersController {
             const users = await AdminApi.getAllUsers();
             const tbody = document.getElementById('usersTableBody');
             const template = document.getElementById('userRowTemplate');
-            
+
             tbody.innerHTML = '';
 
             users.forEach(user => {
                 const clone = template.content.cloneNode(true);
-                
+
                 clone.querySelector('.user-id').textContent = user.id;
                 clone.querySelector('.user-firstName').textContent = user.firstName;
                 clone.querySelector('.user-lastName').textContent = user.lastName;
                 clone.querySelector('.user-email').textContent = user.email;
-                
+
                 const roles = Array.isArray(user.roles) ? user.roles : [user.roles];
-                const formattedRoles = roles.map(role => 
-                    typeof role === 'string' ? role.replace('ROLE_', '') : 
-                    role.authority ? role.authority.replace('ROLE_', '') : ''
+                const formattedRoles = roles.map(role =>
+                    typeof role === 'string' ? role.replace('ROLE_', '') :
+                        role.authority ? role.authority.replace('ROLE_', '') : ''
                 ).join(', ');
                 clone.querySelector('.user-roles').textContent = formattedRoles;
 
@@ -103,7 +111,7 @@ export class UsersController {
     async editUser(id) {
         try {
             const user = await AdminApi.getUser(id);
-            
+
             document.getElementById('userId').value = user.id;
             document.getElementById('editFirstName').value = user.firstName;
             document.getElementById('editLastName').value = user.lastName;
@@ -113,7 +121,7 @@ export class UsersController {
 
             const rolesSelect = document.getElementById('editRoles');
             const userRoles = Array.isArray(user.roles) ? user.roles : [user.roles];
-            
+
             Array.from(rolesSelect.options).forEach(option => {
                 option.selected = userRoles.includes(option.value);
             });
@@ -125,33 +133,9 @@ export class UsersController {
         }
     }
 
-    displayValidationErrors(errors) {
-        this.clearValidationErrors();
-        errors.forEach(error => {
-            const field = error.field;
-            const message = error.defaultMessage;
-            
-            const input = document.getElementById('edit' + field.charAt(0).toUpperCase() + field.slice(1));
-            if (input) {
-                input.classList.add('is-invalid');
-                
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'invalid-feedback';
-                errorDiv.textContent = message;
-                
-                input.parentNode.appendChild(errorDiv);
-            }
-        });
-    }
-
-    clearValidationErrors() {
-        document.querySelectorAll('.invalid-feedback').forEach(el => el.remove());
-        document.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
-    }
-
     async handleEditSubmit(form) {
         try {
-            this.clearValidationErrors();
+            ValidationService.clearValidationErrors();
 
             const rolesSelect = document.getElementById('editRoles');
             const selectedRoles = Array.from(rolesSelect.selectedOptions).map(option => option.value);
@@ -171,21 +155,26 @@ export class UsersController {
             }
 
             const response = await AdminApi.updateUser(userData);
-            
-            if (response.errors) {
-                this.displayValidationErrors(response.errors);
-                return;
-            }
 
-            showMessage(response.message || 'Пользователь успешно обновлен', 'success');
+            showMessage('Пользователь успешно обновлен', 'success');
             this.modal.hide();
             await this.loadUsers();
         } catch (error) {
+            console.error('Error in handleEditSubmit:', error);
             if (error.response && error.response.errors) {
-                this.displayValidationErrors(error.response.errors);
+                ValidationService.displayValidationErrors(error.response.errors, 'edit');
+            } else if (error.code === ErrorCodes.USERNAME_TAKEN) {
+                ValidationService.displayValidationErrors([{
+                    field: ErrorFields.USERNAME,
+                    defaultMessage: error.message
+                }], 'edit');
+            } else if (error.code === ErrorCodes.EMAIL_TAKEN) {
+                ValidationService.displayValidationErrors([{
+                    field: ErrorFields.EMAIL,
+                    defaultMessage: error.message
+                }], 'edit');
             } else {
-                showMessage(error.message || 'Ошибка при обновлении пользователя', 'error');
-                console.error('Error updating user:', error);
+                showMessage('Ошибка при обновлении пользователя', 'error');
             }
         }
     }
@@ -210,7 +199,7 @@ export class UsersController {
 
             const rolesSelect = document.getElementById('editRoles');
             rolesSelect.innerHTML = '';
-            
+
             roles.forEach(role => {
                 const option = document.createElement('option');
                 option.value = role.authority;
@@ -222,4 +211,4 @@ export class UsersController {
             console.error('Error loading roles:', error);
         }
     }
-} 
+}

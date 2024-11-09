@@ -1,5 +1,4 @@
-import { HttpClient, API_URL } from '../utils/httpClient.js';
-import { TokenService } from '../services/tokenService.js';
+import { HttpClient } from '../utils/httpClient.js';
 
 export class AdminApi {
     static async getAllUsers() {

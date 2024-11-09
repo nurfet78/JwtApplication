@@ -1,5 +1,5 @@
-import { HttpClient, API_URL } from '../utils/httpClient.js';
-import { TokenService } from '../services/tokenService.js';
+import { API_URL } from '../utils/httpClient.js';
+import { ErrorCodes } from '../constants/errorMessages.js';
 
 export class AuthApi {
     static async login(username, password) {
@@ -22,7 +22,6 @@ export class AuthApi {
 
         } catch (error) {
             if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-                showMessage('Не удалось подключиться к серверу. Проверьте подключение к интернету.', 'danger');
                 throw new Error('Не удалось подключиться к серверу. Проверьте подключение к интернету.');
             }
             throw error;
@@ -30,30 +29,58 @@ export class AuthApi {
     }
 
     static async register(userData) {
-        const response = await fetch(`${API_URL}/api/auth/signup`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(userData)
-        });
+        try {
+            const response = await fetch(`${API_URL}/api/auth/signup`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(userData)
+            });
 
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-            const data = await response.json();
             if (!response.ok) {
-                if (data.errors) {
-                    throw { response: data };
+                const errorText = await response.text();
+
+                // Преобразуем текстовые сообщения в объекты с кодом ошибки
+                if (errorText === 'Имя пользователя уже занято!') {
+                    throw {
+                        code: ErrorCodes.USERNAME_TAKEN,
+                        message: errorText
+                    };
                 }
-                throw new Error(data.message || 'Ошибка при регистрации');
+
+                if (errorText === 'Электронная почта уже используется!') {
+                    throw {
+                        code: ErrorCodes.EMAIL_TAKEN,
+                        message: errorText
+                    };
+                }
+
+                // Пытаемся распарсить JSON с ошибками валидации
+                try {
+                    const errorData = JSON.parse(errorText);
+                    if (errorData.errors) {
+                        throw { response: errorData };
+                    }
+                } catch (e) {
+                    if (e.response) {
+                        throw e;
+                    }
+                }
+
+                throw new Error(errorText);
             }
-            return data;
-        } else {
-            const text = await response.text();
-            if (!response.ok) {
-                throw new Error(text || 'Ошибка при регистрации');
+
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                return await response.json();
+            } else {
+                const text = await response.text();
+                return { ok: true, message: text };
             }
-            return { message: text, ok: response.ok };
+        } catch (error) {
+            console.error('Registration error:', error);
+            throw error;
         }
     }
 
@@ -105,26 +132,4 @@ export class AuthApi {
             throw error;
         }
     }
-
-    static async logout(refreshTokenId) {
-        console.log('AuthApi.logout() called with refreshTokenId:', refreshTokenId);
-        const response = await fetch(`${API_URL}/api/auth/logout`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${TokenService.getAccessToken()}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ refreshTokenId })
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Server error response:', errorText);
-            throw new Error(errorText);
-        }
-
-        const message = await response.text();
-        console.log('Logout response:', message);
-        return message;
-    }
-} 
+}

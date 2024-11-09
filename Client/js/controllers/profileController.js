@@ -38,7 +38,7 @@ export class ProfileController {
                 document.getElementById('lastName').textContent = data.lastName;
                 document.getElementById('email').textContent = data.email;
                 document.getElementById('username').textContent = data.username;
-                document.getElementById('lastLogin').textContent = 
+                document.getElementById('lastLogin').textContent =
                     new Date(data.lastLogin).toLocaleString();
             }
         } catch (error) {

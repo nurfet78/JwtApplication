@@ -1,5 +1,5 @@
 import { showMessage } from '../utils/messageUtil.js';
-import { AuthApi } from '../api/authApi.js';
+import { API_URL } from '../utils/httpClient.js';
 
 export class TokenService {
     static getAccessToken() {
@@ -27,7 +27,7 @@ export class TokenService {
     static isAccessTokenExpired() {
         const token = this.getAccessToken();
         if (!token) return true;
-        
+
         try {
             const payload = JSON.parse(atob(token.split('.')[1]));
             const currentTime = Math.floor(Date.now() / 1000);
@@ -40,14 +40,14 @@ export class TokenService {
     static getRefreshTokenRemainingTime() {
         const token = this.getRefreshToken();
         if (!token) return 0;
-        
+
         try {
             const payload = JSON.parse(atob(token.split('.')[1]));
             const currentTime = Math.floor(Date.now() / 1000);
             const timeUntilExpiry = payload.exp - currentTime;
             const totalLifetime = payload.exp - payload.iat;
             const remainingLifetimePercent = (timeUntilExpiry / totalLifetime) * 100;
-            
+
             return remainingLifetimePercent;
         } catch {
             return 0;
@@ -74,12 +74,29 @@ export class TokenService {
                 console.error('RefreshTokenId not found');
                 throw new Error('RefreshTokenId not found');
             }
-            const message = await AuthApi.logout(refreshTokenId);
-            console.log('Server response:', message);
+
+            const response = await fetch(`${API_URL}/api/auth/logout`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.getAccessToken()}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ refreshTokenId })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText);
+            }
+
+            const message = await response.text();
+            console.log('Logout response:', message);
             showMessage(message, 'info');
+
         } catch (error) {
             console.error('Error during logout:', error);
         } finally {
+            // В любом случае удаляем токены
             this.removeTokens();
         }
     }

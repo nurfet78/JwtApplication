@@ -1,4 +1,4 @@
-import { HttpClient, API_URL } from '../utils/httpClient.js';
+import { HttpClient } from '../utils/httpClient.js';
 
 export class RoleApi {
     static async getAllRoles() {
